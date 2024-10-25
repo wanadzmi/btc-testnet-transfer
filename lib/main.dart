@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:bip32/bip32.dart' as bip32;
 import 'package:bip39/bip39.dart' as bip39;
 import 'package:flutter/material.dart';
@@ -26,10 +27,10 @@ class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
 
   @override
-  _WalletPageState createState() => _WalletPageState();
+  WalletPageState createState() => WalletPageState();
 }
 
-class _WalletPageState extends State<WalletPage> {
+class WalletPageState extends State<WalletPage> {
   final String mnemonic =
       'spin pond apart swear axis address play real floor ripple category ski jelly balance rice';
 
@@ -62,7 +63,7 @@ class _WalletPageState extends State<WalletPage> {
         .data
         .address;
 
-    print('Generated Bitcoin Address: $address (Testnet)');
+    log('Generated Bitcoin Address: $address (Testnet)');
 
     setState(() {
       bitcoinAddress = address;
@@ -83,10 +84,9 @@ class _WalletPageState extends State<WalletPage> {
           totalBalance = '${toBTC(balanceSats)} BTC';
         });
 
-        print(
-            'Total Balance: $balanceSats satoshis (${toBTC(balanceSats)} BTC)');
+        log('Total Balance: $balanceSats satoshis (${toBTC(balanceSats)} BTC)');
       } else {
-        print('Failed to fetch balance: ${response.body}');
+        log('Failed to fetch balance: ${response.body}');
       }
     }
   }
@@ -94,17 +94,17 @@ class _WalletPageState extends State<WalletPage> {
   Future<List<dynamic>> getUTXOs(String address) async {
     final url = 'https://api.blockcypher.com/v1/btc/test3/addrs/$address/full';
 
-    print(url);
+    log(url);
     final response = await http.get(Uri.parse(url));
 
     if (response.statusCode != 200) {
-      print('Failed to fetch UTXOs: ${response.body}');
+      log('Failed to fetch UTXOs: ${response.body}');
       return [];
     }
 
     final data = jsonDecode(response.body);
     final utxos = data['txrefs'] ?? [];
-    print('Fetched UTXOs: $utxos');
+    log('Fetched UTXOs: $utxos');
     return utxos;
   }
 
@@ -113,12 +113,12 @@ class _WalletPageState extends State<WalletPage> {
     final response = await http.get(Uri.parse(url));
 
     if (response.statusCode != 200) {
-      print('Failed to fetch fees: ${response.body}');
+      log('Failed to fetch fees: ${response.body}');
       return 1000;
     }
 
     final fees = jsonDecode(response.body);
-    print('Fetched Fees: $fees');
+    log('Fetched Fees: $fees');
 
     switch (category) {
       case 'Economic':
@@ -133,7 +133,7 @@ class _WalletPageState extends State<WalletPage> {
 
   int estimateTxSize(int numInputs, int numOutputs) {
     final size = (numInputs * 148) + (numOutputs * 34) + 10;
-    print('Estimated Transaction Size: $size bytes');
+    log('Estimated Transaction Size: $size bytes');
     return size;
   }
 
@@ -142,23 +142,23 @@ class _WalletPageState extends State<WalletPage> {
     final feeRate = await getFeeRate(category);
     final txSize = estimateTxSize(numInputs, numOutputs);
     final fee = (feeRate * txSize / 1000).ceil();
-    print('Calculated Fee: $fee satoshis (${toBTC(fee)} BTC)');
+    log('Calculated Fee: $fee satoshis (${toBTC(fee)} BTC)');
     return fee;
   }
 
   Future<void> sendBitcoin(String recipientAddress, int amountSatoshi) async {
     if (bitcoinAddress == null) return;
 
-    print('Starting Transaction');
-    print('Recipient Address: $recipientAddress');
-    print('Amount: $amountSatoshi satoshis (${toBTC(amountSatoshi)} BTC)');
+    log('Starting Transaction');
+    log('Recipient Address: $recipientAddress');
+    log('Amount: $amountSatoshi satoshis (${toBTC(amountSatoshi)} BTC)');
 
     final seed = bip39.mnemonicToSeed(mnemonic);
     final node = bip32.BIP32.fromSeed(seed);
     final utxos = await getUTXOs(bitcoinAddress!);
 
     if (utxos.isEmpty) {
-      print('No UTXOs available');
+      log('No UTXOs available');
       return;
     }
 
@@ -169,26 +169,25 @@ class _WalletPageState extends State<WalletPage> {
     for (var utxo in utxos) {
       txb.addInput(utxo['txid'], utxo['vout']);
       totalInput += utxo['value'];
-      print('Added UTXO: ${utxo['txid']} with ${utxo['value']} satoshis');
+      log('Added UTXO: ${utxo['txid']} with ${utxo['value']} satoshis');
     }
 
-    print(
-        'Total Input Value: $totalInput satoshis (${toBTC(totalInput.toInt())} BTC)');
+    log('Total Input Value: $totalInput satoshis (${toBTC(totalInput.toInt())} BTC)');
 
     final fee = await calculateFee(selectedFeeCategory, utxos.length, 1);
 
     if (totalInput < amountSatoshi + fee) {
-      print('Insufficient total input value for transaction');
+      log('Insufficient total input value for transaction');
       return;
     }
 
     txb.addOutput(recipientAddress, amountSatoshi);
-    print('Added Output: $recipientAddress - $amountSatoshi satoshis');
+    log('Added Output: $recipientAddress - $amountSatoshi satoshis');
 
     final change = totalInput - amountSatoshi - fee;
     if (change > 0) {
       txb.addOutput(bitcoinAddress!, change.toInt());
-      print('Added Change Output: $bitcoinAddress - $change satoshis');
+      log('Added Change Output: $bitcoinAddress - $change satoshis');
     }
 
     final privateKey = node.derivePath("m/0'/0/0").privateKey;
@@ -198,16 +197,16 @@ class _WalletPageState extends State<WalletPage> {
     try {
       for (int i = 0; i < utxos.length; i++) {
         txb.sign(vin: i, keyPair: keyPair);
-        print('Signed input $i');
+        log('Signed input $i');
       }
-      print('Transaction signed successfully');
+      log('Transaction signed successfully');
     } catch (e) {
-      print('Error during signing: $e');
+      log('Error during signing: $e');
       return;
     }
 
     final txHex = txb.build().toHex();
-    print('Transaction Hex: $txHex');
+    log('Transaction Hex: $txHex');
     await broadcastTransaction(txHex);
   }
 
@@ -222,9 +221,9 @@ class _WalletPageState extends State<WalletPage> {
     );
 
     if (response.statusCode == 201) {
-      print('Transaction Broadcasted Successfully!');
+      log('Transaction Broadcasted Successfully!');
     } else {
-      print('Broadcast Failed: ${response.body}');
+      log('Broadcast Failed: ${response.body}');
     }
   }
 
@@ -276,7 +275,7 @@ class _WalletPageState extends State<WalletPage> {
                 final btcAmount = double.tryParse(amountController.text) ?? 0.0;
 
                 if (recipient.isEmpty || btcAmount <= 0) {
-                  print('Invalid input');
+                  log('Invalid input');
                   return;
                 }
 
